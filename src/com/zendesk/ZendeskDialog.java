@@ -1,8 +1,10 @@
 package com.zendesk;
 
 import java.io.BufferedReader;
+import java.io.DataOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 
@@ -32,10 +34,12 @@ public class ZendeskDialog {
 	public static final String TAG = "Zendesk";
 	private static final String TITLE_DEFAULT = "Title";
 	private static final String DESCRIPTION_DEFAULT = "How may we help you? Please fill in details below, and we'll get back to you as soon as possible.";
+	private static final String TAG_DEFAULT = "dropbox";
 
 	private static String title;
 	private static String description;
 	private static String url;
+	private static String tag;
 
 	private static Context context;
 	private static View dialogView;
@@ -74,6 +78,11 @@ public class ZendeskDialog {
 		ZendeskDialog.url = url;
 		return new ZendeskDialog(ZendeskDialog.context);
 	}
+	
+	public ZendeskDialog setTag(String tag) {
+		ZendeskDialog.tag = tag;
+		return new ZendeskDialog(ZendeskDialog.context);
+	}
 
 	public AlertDialog create() {
 		// set Dialog Title
@@ -89,6 +98,16 @@ public class ZendeskDialog {
 		else if (getMetaDataByKey("zendesk_description") != null)
 			descriptionTV.setText(getMetaDataByKey("zendesk_description"));
 
+		if (ZendeskDialog.tag == null){ // not already configured programatically
+			String tagConfig = getMetaDataByKey("zendesk_tag");
+			if (tagConfig != null){
+				ZendeskDialog.tag = getMetaDataByKey("zendesk_tag");
+			}
+			else{
+				ZendeskDialog.tag = TAG_DEFAULT;
+			}
+		}
+		
 		// set Dialog url
 		if (ZendeskDialog.url == null)
 			ZendeskDialog.url = getMetaDataByKey("zendesk_url");
@@ -96,7 +115,7 @@ public class ZendeskDialog {
 		if (ZendeskDialog.url != null) {
 			return aDialog;
 		} else {
-			Log.e(TAG, "Meta Data with value \"zendesk_url\" couldn't be found in AndroidManifext.xml");
+			Log.e(TAG, "Meta Data with key \"zendesk_url\" couldn't be found in AndroidManifext.xml");
 			return null;
 		}
 	}
@@ -109,6 +128,7 @@ public class ZendeskDialog {
 			manager = context.getPackageManager();
 			info = manager.getApplicationInfo(context.getPackageName(), PackageManager.GET_META_DATA);
 			valueByKey = info.metaData.getString(key);
+			Log.d(TAG, "Key: " + key + " - Value: " + valueByKey);
 		} catch (Exception e) {
 			Log.e(TAG, "Error reading meta data from AndroidManifest.xml", e);
 			return null;
@@ -119,30 +139,49 @@ public class ZendeskDialog {
 	static Runnable runnable = new Runnable() {
 		public void run() {
 			Message message = new Message();
-			String text = descriptionET.getText().toString();
+			String description = descriptionET.getText().toString();
 			String subject = subjectET.getText().toString();
 			String email = emailET.getText().toString();
 
 			// Submit query here
 			try {
 				String server = ZendeskDialog.url;
-				String dir = "/requests/embedded/create.json";
-				String reqDesc = "description=" + URLEncoder.encode(text, "UTF-8");
+				String dir = "/requests/mobile_api/create.json";
+				String reqDesc = "description=" + URLEncoder.encode(description, "UTF-8");
 				String reqEmail = "email=" + URLEncoder.encode(email, "UTF-8");
 				String reqSubject = "subject=" + URLEncoder.encode(subject, "UTF-8");
-
-				String requestUrl = "http://" + server + dir + "?" + reqDesc + "&" + reqEmail + "&" + reqSubject + "&tag=dropbox";
+				String reqTag = "set_tags=" + URLEncoder.encode(ZendeskDialog.tag, "UTF-8");
+				
+				String reqContent = reqDesc + "&" + reqEmail + "&" + reqSubject + "&" + reqTag;
+				String requestUrl = "http://" + server + dir;
 
 				URL url = new URL(requestUrl);
 				Log.d(TAG, "Sending Request " + url.toExternalForm());
+				
+				HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+				connection.setRequestMethod("POST");
+				connection.setRequestProperty ("Content-Type","application/x-www-form-urlencoded");
+				connection.setRequestProperty("Content-Length", "" + Integer.toString(reqContent.getBytes().length));
+				connection.addRequestProperty("X-Zendesk-Mobile-API", "1.0");
+				connection.setUseCaches(false);
+				connection.setDoInput(true);
+				connection.setDoOutput(true);
 
-				InputStreamReader inputStreamReader = new InputStreamReader(url.openStream());
+				// send request
+				DataOutputStream out = new DataOutputStream(connection.getOutputStream());
+				out.writeBytes(reqContent);
+				out.flush();
+				out.close();
+
+				// get response
+				InputStreamReader inputStreamReader = new InputStreamReader(connection.getInputStream());
 				BufferedReader bufferReader = new BufferedReader(inputStreamReader, 8192);
 				String line = "";
 				while ((line = bufferReader.readLine()) != null) {
 					Log.d(TAG, line);
 				}
-
+				bufferReader.close();
+				
 				message.getData().putString("submit", "successfully");
 				toastHandler.sendMessage(message);
 

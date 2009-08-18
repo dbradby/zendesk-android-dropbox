@@ -27,6 +27,9 @@ How to integrate Zendesk into your Android Application
 
     <meta-data android:name="zendesk_description" android:value="How may we help you?"/>
 
+- Optionally specify the tag for tickets (the default is dropbox)
+
+    <meta-data android:name="zendesk_tag" android:value="dropbox"/>
 
 - Optionally you can configure everything programatically using the Dialog Builder style API
 
@@ -34,6 +37,7 @@ How to integrate Zendesk into your Android Application
         .setTitle("custom title")
         .setDescription("custom description")
         .setUrl("subdomain.zendesk.com")
+		.setTag("dropbox")
         .create();
 
 
